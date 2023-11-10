@@ -57,13 +57,33 @@ uint32_t tilt = 0;
  * Heart Rate Measurement Char: 0x2A37
  * Body Sensor Location Char:   0x2A38
  */
-BLEService        hrms = BLEService(0x180D);
-BLECharacteristic hrmc = BLECharacteristic(0x2A37);
+BLEService        hrms = BLEService(UUID16_SVC_HEART_RATE);
+BLECharacteristic hrmc = BLECharacteristic(UUID16_CHR_HEART_RATE_MEASUREMENT);
+BLECharacteristic bslc = BLECharacteristic(UUID16_CHR_BODY_SENSOR_LOCATION);
 
 BLEDis bledis;    // DIS (Device Information Service) helper class instance
 BLEBas blebas;    // BAS (Battery Service) helper class instance
 
 uint8_t  bps = 0;
+
+void cccd_callback(uint16_t conn_hdl, BLECharacteristic* chr, uint16_t cccd_value)
+{
+    // Display the raw request packet
+    Serial.print("CCCD Updated: ");
+    //Serial.printBuffer(request->data, request->len);
+    Serial.print(cccd_value);
+    Serial.println("");
+
+    // Check the characteristic this CCCD update is associated with in case
+    // this handler is used for multiple CCCD records.
+    if (chr->uuid == hrmc.uuid) {
+        if (chr->indicateEnabled(conn_hdl)) {
+            Serial.println("Temperature Measurement 'Indicate' enabled");
+        } else {
+            Serial.println("Temperature Measurement 'Indicate' disabled");
+        }
+    }
+}
 
 void setupTilt()
 {
@@ -102,13 +122,19 @@ void setupHRM(void)
   //    B2:3    = UINT16 - 16-bit heart rate measurement value in BPM
   //    B4:5    = UINT16 - Energy expended in joules
   //    B6:7    = UINT16 - RR Internal (1/1024 second resolution)
-  hrmc.setProperties(CHR_PROPS_NOTIFY);
+  hrmc.setProperties(CHR_PROPS_NOTIFY | CHR_PROPS_BROADCAST );
   hrmc.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
   hrmc.setFixedLen(2);
-  //hrmc.setCccdWriteCallback(cccd_callback);  // Optionally capture CCCD updates
+  hrmc.setCccdWriteCallback(cccd_callback);  // Optionally capture CCCD updates
   hrmc.begin();
   uint8_t hrmdata[2] = { 0b00000110, 0x40 }; // Set the characteristic to use 8-bit values, with the sensor connected and detected
-  hrmc.notify(hrmdata, 2);                   // Use .notify instead of .write!
+  hrmc.notify(hrmdata, 2);                 // Use .notify instead of .write!
+
+  bslc.setProperties(CHR_PROPS_READ);
+  bslc.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
+  bslc.setFixedLen(1);
+  bslc.begin();
+  bslc.write8(2);    // Set the characteristic to 'Wrist' (2)
 }
 
 void updateTilt()
@@ -158,6 +184,7 @@ void setup()
   // connect at 115200 so we can read the GPS fast enough and echo without dropping chars
   // also spit it out
   Serial.begin(115200);
+  while ( !Serial ) delay(10); 
 
   delay(1000);
   Serial.println("Adafruit GPS library basic parsing test!");
@@ -207,6 +234,7 @@ void setup()
   Serial.println("Setting up the advertising payload(s)");
   startAdv();
   Bluefruit.Advertising.start();
+  Serial.println("DOne");
 }
 
 void loop() // run over and over again
@@ -251,9 +279,8 @@ void loop() // run over and over again
     }
 
      pixels.show();
-  }
 
-  if ( Bluefruit.connected() ) {
+     if ( Bluefruit.connected() ) {
     Serial.println("CONNECTED");
     uint8_t hrmdata[2] = { 0b00000110, bps++ };           // Sensor connected, increment BPS value
     
@@ -265,5 +292,6 @@ void loop() // run over and over again
     }else{
       Serial.println("ERROR: Notify not set in the CCCD or not connected!");
     }
+  }
   }
 }
