@@ -59,6 +59,8 @@ uint32_t tilt = 0;
  */
 BLEService        bleService = BLEService(0x0070);
 BLECharacteristic latitude = BLECharacteristic(0x0071);
+BLECharacteristic longitude = BLECharacteristic(0x0072);
+BLECharacteristic trigger = BLECharacteristic(0x007F);
 
 BLEDis bledis;    // DIS (Device Information Service) helper class instance
 BLEBas blebas;    // BAS (Battery Service) helper class instance
@@ -91,20 +93,25 @@ void setupTilt()
 
 void setupHRM(void)
 {
-  // Configure the Heart Rate Monitor service
-  // See: https://www.bluetooth.com/specifications/gatt/viewer?attributeXmlFile=org.bluetooth.service.heart_rate.xml
-  // Supported Characteristics:
-  // Name                         UUID    Requirement Properties
-  // ---------------------------- ------  ----------- ----------
-  // Heart Rate Measurement       0x2A37  Mandatory   Notify
-  // Body Sensor Location         0x2A38  Optional    Read
-  // Heart Rate Control Point     0x2A39  Conditional Write       <-- Not used here
   bleService.begin();
+
   latitude.setProperties(CHR_PROPS_NOTIFY);
   latitude.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
   latitude.setFixedLen(4);
   latitude.setUserDescriptor("latitude");
   latitude.begin();
+
+  longitude.setProperties(CHR_PROPS_NOTIFY);
+  longitude.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
+  longitude.setFixedLen(4);
+  longitude.setUserDescriptor("longitude");
+  longitude.begin();
+
+  trigger.setProperties(CHR_PROPS_NOTIFY);
+  trigger.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
+  trigger.setFixedLen(1);
+  trigger.setUserDescriptor("trigger");
+  trigger.begin();
 }
 
 void updateTilt()
@@ -236,6 +243,9 @@ void loop() // run over and over again
 
     if (isTilt()) {
       pixels.setPixelColor(1, pixels.Color(0,150,0));
+      trigger.notify8((uint8_t) true);
+    } else {
+      trigger.notify8((uint8_t) false);
     }
 
      pixels.show();
@@ -243,11 +253,8 @@ void loop() // run over and over again
      if ( Bluefruit.connected() ) {
     Serial.println("CONNECTED");
     
-    if ( latitude.notify32((uint32_t) GPS.latitude_fixed) ){
-      Serial.print("Latitude updated to: "); Serial.println(GPS.latitude_fixed); 
-    }else{
-      Serial.println("ERROR: Notify not set in the CCCD or not connected!");
-    }
+    latitude.notify32((uint32_t) GPS.latitude_fixed);
+    longitude.notify32((uint32_t) GPS.longitude_fixed);
   }
   }
 }
