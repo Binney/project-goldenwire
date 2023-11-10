@@ -21,10 +21,10 @@
 #endif
 
 // Which pin on the Arduino is connected to the NeoPixels?
-#define PIN        6 // On Trinket or Gemma, suggest changing this to 1
+#define PIN        8 // On Trinket or Gemma, suggest changing this to 1
 
 // How many NeoPixels are attached to the Arduino?
-#define NUMPIXELS 1 // Popular NeoPixel ring size
+#define NUMPIXELS 2 // Popular NeoPixel ring size
 
 Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 
@@ -32,6 +32,8 @@ Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 
 // what's the name of the hardware serial port?
 #define GPSSerial Serial1
+
+#define TILTSWITCH A1
 
 // Connect to the GPS on the hardware port
 Adafruit_GPS GPS(&GPSSerial);
@@ -42,11 +44,39 @@ Adafruit_GPS GPS(&GPSSerial);
 
 uint32_t timer = millis();
 
+#define TILTINCREASE 1
+#define TILTDECREASE 2
+#define TILTONTHRESHOLD 15
+#define TILTLIMIT 20
+
+uint32_t tilt = 0;
+
+void setupTilt()
+{
+  pinMode(TILTSWITCH, INPUT);
+}
+
+void updateTilt()
+{
+  if (digitalRead(TILTSWITCH) == HIGH && tilt <= TILTLIMIT) {
+    tilt+=TILTINCREASE;
+  }
+  else if (tilt > 0) {
+    tilt -= min(tilt, TILTDECREASE);
+  }
+}
+
+bool isTilt()
+{
+  return (tilt >= TILTONTHRESHOLD);
+}
 
 void setup()
 {
+  setupTilt();
   //while (!Serial);  // uncomment to have the sketch wait until Serial is ready
   pixels.begin(); // INITIALIZE NeoPixel strip object (REQUIRED)
+  pixels.setBrightness(128);
   // connect at 115200 so we can read the GPS fast enough and echo without dropping chars
   // also spit it out
   Serial.begin(115200);
@@ -76,6 +106,8 @@ void setup()
 
 void loop() // run over and over again
 {
+  pixels.clear();
+
   // read data from the GPS in the 'main loop'
   char c = GPS.read();
   // if you want to debug, this is a good time to do it!
@@ -86,53 +118,33 @@ void loop() // run over and over again
     // a tricky thing here is if we print the NMEA sentence, or data
     // we end up not listening and catching other sentences!
     // so be very wary if using OUTPUT_ALLDATA and trying to print out data
-    Serial.print(GPS.lastNMEA()); // this also sets the newNMEAreceived() flag to false
+    //Serial.print(GPS.lastNMEA()); // this also sets the newNMEAreceived() flag to false
     if (!GPS.parse(GPS.lastNMEA())) // this also sets the newNMEAreceived() flag to false
       return; // we can fail to parse a sentence in which case we should just wait for another
   }
 
+  updateTilt();
+
+
   // approximately every 2 seconds or so, print out the current stats
-  if (millis() - timer > 2000) {
+  if (millis() - timer > 200) {
     timer = millis(); // reset the timer
-    Serial.print("\nTime: ");
-    if (GPS.hour < 10) { Serial.print('0'); }
-    Serial.print(GPS.hour, DEC); Serial.print(':');
-    if (GPS.minute < 10) { Serial.print('0'); }
-    Serial.print(GPS.minute, DEC); Serial.print(':');
-    if (GPS.seconds < 10) { Serial.print('0'); }
-    Serial.print(GPS.seconds, DEC); Serial.print('.');
-    if (GPS.milliseconds < 10) {
-      Serial.print("00");
-    } else if (GPS.milliseconds > 9 && GPS.milliseconds < 100) {
-      Serial.print("0");
-    }
-    Serial.println(GPS.milliseconds);
-    Serial.print("Date: ");
-    Serial.print(GPS.day, DEC); Serial.print('/');
-    Serial.print(GPS.month, DEC); Serial.print("/20");
-    Serial.println(GPS.year, DEC);
-    Serial.print("Fix: "); Serial.print((int)GPS.fix);
-    Serial.print(" quality: "); Serial.println((int)GPS.fixquality);
+  
     if (GPS.fix) {
       Serial.print("Location: ");
       Serial.print(GPS.latitude, 4); Serial.print(GPS.lat);
       Serial.print(", ");
       Serial.print(GPS.longitude, 4); Serial.println(GPS.lon);
-      Serial.print("Speed (knots): "); Serial.println(GPS.speed);
-      Serial.print("Angle: "); Serial.println(GPS.angle);
-      Serial.print("Altitude: "); Serial.println(GPS.altitude);
-      Serial.print("Satellites: "); Serial.println((int)GPS.satellites);
-      Serial.print("Antenna status: "); Serial.println((int)GPS.antenna);
 
-      pixels.clear(); // Set all pixel colors to 'off'
       pixels.setPixelColor(0, pixels.Color(0, 150, 0));
-      pixels.show();
-      delay(DELAYVAL);
     } else {
-      pixels.clear();
       pixels.setPixelColor(0, pixels.Color(150, 0, 0));
-      pixels.show();
-      delay(DELAYVAL);
     }
+
+    if (isTilt()) {
+      pixels.setPixelColor(1, pixels.Color(0,150,0));
+    }
+
+     pixels.show();
   }
 }
