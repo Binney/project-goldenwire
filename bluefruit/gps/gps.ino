@@ -52,11 +52,6 @@ uint32_t timer = millis();
 
 uint32_t tilt = 0;
 
-/* HRM Service Definitions
- * Heart Rate Monitor Service:  0x180D
- * Heart Rate Measurement Char: 0x2A37
- * Body Sensor Location Char:   0x2A38
- */
 BLEService        bleService = BLEService(0x0070);
 BLECharacteristic latitude = BLECharacteristic(0x0071);
 BLECharacteristic longitude = BLECharacteristic(0x0072);
@@ -65,33 +60,12 @@ BLECharacteristic trigger = BLECharacteristic(0x007F);
 BLEDis bledis;    // DIS (Device Information Service) helper class instance
 BLEBas blebas;    // BAS (Battery Service) helper class instance
 
-uint8_t  bps = 0;
-
-// void cccd_callback(uint16_t conn_hdl, BLECharacteristic* chr, uint16_t cccd_value)
-// {
-//     // Display the raw request packet
-//     Serial.print("CCCD Updated: ");
-//     //Serial.printBuffer(request->data, request->len);
-//     Serial.print(cccd_value);
-//     Serial.println("");
-
-//     // Check the characteristic this CCCD update is associated with in case
-//     // this handler is used for multiple CCCD records.
-//     if (chr->uuid == latitude.uuid) {
-//         if (chr->indicateEnabled(conn_hdl)) {
-//             Serial.println("Temperature Measurement 'Indicate' enabled");
-//         } else {
-//             Serial.println("Temperature Measurement 'Indicate' disabled");
-//         }
-//     }
-// }
-
 void setupTilt()
 {
   pinMode(TILTSWITCH, INPUT);
 }
 
-void setupHRM(void)
+void setupBLEService(void)
 {
   bleService.begin();
 
@@ -196,12 +170,21 @@ void setup()
   // Ask for firmware version
   GPSSerial.println(PMTK_Q_RELEASE);
 
-  setupHRM();
+  setupBLEService();
   // Setup the advertising packet(s)
   Serial.println("Setting up the advertising payload(s)");
   startAdv();
   Bluefruit.Advertising.start();
   Serial.println("DOne");
+}
+
+void transmitLocation() {
+  latitude.notify32((uint32_t) GPS.latitude_fixed);
+  longitude.notify32((uint32_t) GPS.longitude_fixed);
+}
+
+void transmitTrigger(bool value) {
+  trigger.notify8((uint8_t) value); 
 }
 
 void loop() // run over and over again
@@ -231,30 +214,22 @@ void loop() // run over and over again
     timer = millis(); // reset the timer
   
     if (GPS.fix) {
-      // Serial.print("Location: ");
-      // Serial.print(GPS.latitude, 4); Serial.print(GPS.lat);
-      // Serial.print(", ");
-      // Serial.print(GPS.longitude, 4); Serial.println(GPS.lon);
-
       pixels.setPixelColor(0, pixels.Color(0, 150, 0));
+
+      if (Bluefruit.connected()) {
+        transmitLocation();
+      }
     } else {
       pixels.setPixelColor(0, pixels.Color(150, 0, 0));
     }
 
     if (isTilt()) {
       pixels.setPixelColor(1, pixels.Color(0,150,0));
-      trigger.notify8((uint8_t) true);
+      transmitTrigger(true);
     } else {
-      trigger.notify8((uint8_t) false);
+      transmitTrigger(false);
     }
-
-     pixels.show();
-
-     if ( Bluefruit.connected() ) {
-    Serial.println("CONNECTED");
-    
-    latitude.notify32((uint32_t) GPS.latitude_fixed);
-    longitude.notify32((uint32_t) GPS.longitude_fixed);
   }
-  }
+
+  pixels.show();
 }
